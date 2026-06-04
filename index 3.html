@@ -1,0 +1,1757 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VoxelFox — Systems Architect</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Bebas+Neue&family=JetBrains+Mono:ital,wght@0,100;0,200;0,300;0,400;0,500;1,300&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════════════════════════════════════════════════
+   ROOT TOKENS
+═══════════════════════════════════════════════════════════ */
+:root {
+  --bg: #02020a;
+  --bg1: #06060f;
+  --bg2: #0a0a18;
+  --c1: #00ffe0;
+  --c2: #7b2fff;
+  --c3: #ff2e7e;
+  --c4: #ffb800;
+  --glass: rgba(255,255,255,0.03);
+  --glass2: rgba(255,255,255,0.06);
+  --border: rgba(255,255,255,0.07);
+  --border2: rgba(0,255,224,0.18);
+  --text: #c8cce8;
+  --muted: #3d3f5c;
+  --ff: 'Space Grotesk', sans-serif;
+  --fb: 'Bebas Neue', cursive;
+  --fm: 'JetBrains Mono', monospace;
+  --glow1: 0 0 20px rgba(0,255,224,0.25), 0 0 60px rgba(0,255,224,0.1);
+  --glow2: 0 0 20px rgba(123,47,255,0.3), 0 0 60px rgba(123,47,255,0.1);
+}
+
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+html { scroll-behavior:smooth; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--ff);
+  height: 100vh;
+  overflow: hidden;
+  cursor: none;
+  user-select: none;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   CURSOR
+═══════════════════════════════════════════════════════════ */
+#cur {
+  position: fixed; top:0; left:0; pointer-events:none; z-index:99999;
+  transform: translate(-50%,-50%);
+  width: 12px; height: 12px;
+  mix-blend-mode: exclusion;
+}
+#cur-dot {
+  width:12px; height:12px;
+  background: #fff;
+  border-radius:50%;
+  transition: transform .1s;
+}
+#cur-ring {
+  position: fixed; top:0; left:0; pointer-events:none; z-index:99998;
+  transform: translate(-50%,-50%);
+  width: 42px; height: 42px;
+  border: 1.5px solid rgba(0,255,224,.5);
+  border-radius:50%;
+  transition: width .3s ease, height .3s ease, border-color .3s;
+}
+.hovering #cur-ring { width:64px; height:64px; border-color: rgba(0,255,224,.9); }
+.hovering #cur-dot { transform: scale(1.8); }
+
+/* ═══════════════════════════════════════════════════════════
+   CANVAS LAYERS
+═══════════════════════════════════════════════════════════ */
+#c-bg  { position:fixed; inset:0; z-index:-20; pointer-events:none; }
+#c-mid { position:fixed; inset:0; z-index:-10; pointer-events:none; }
+#c-fg  { position:fixed; inset:0; z-index:-5;  pointer-events:none; }
+
+/* ═══════════════════════════════════════════════════════════
+   SCANLINES + GRAIN
+═══════════════════════════════════════════════════════════ */
+.scanlines {
+  position:fixed; inset:0; z-index:9985; pointer-events:none;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0,0,0,.08) 2px,
+    rgba(0,0,0,.08) 4px
+  );
+}
+.grain {
+  position:fixed; inset:0; z-index:9986; pointer-events:none;
+  opacity: .035;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E");
+  background-size: 256px;
+  animation: grainAnim 0.4s steps(1) infinite;
+}
+@keyframes grainAnim {
+  0%   { background-position: 0% 0%; }
+  25%  { background-position: 100% 0%; }
+  50%  { background-position: 100% 100%; }
+  75%  { background-position: 0% 100%; }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   VIGNETTE
+═══════════════════════════════════════════════════════════ */
+.vignette {
+  position:fixed; inset:0; z-index:9984; pointer-events:none;
+  background: radial-gradient(ellipse at 50% 50%, transparent 50%, rgba(0,0,0,.65) 100%);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   AMBIENT BLOBS
+═══════════════════════════════════════════════════════════ */
+.blob {
+  position:fixed; border-radius:50%; pointer-events:none; filter:blur(90px);
+  animation: blobFloat 12s ease-in-out infinite;
+}
+.blob-1 { width:500px; height:500px; background:rgba(0,255,224,.04); top:-10%; left:-10%; animation-delay:-3s; z-index:-15; }
+.blob-2 { width:600px; height:400px; background:rgba(123,47,255,.05); bottom:-15%; right:-10%; animation-delay:-7s; z-index:-15; }
+.blob-3 { width:300px; height:300px; background:rgba(255,46,126,.03); top:40%; left:35%; animation-delay:-5s; z-index:-15; }
+@keyframes blobFloat {
+  0%,100% { transform:translate(0,0) scale(1); }
+  33% { transform:translate(30px,-20px) scale(1.05); }
+  66% { transform:translate(-20px,30px) scale(.95); }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   NAV
+═══════════════════════════════════════════════════════════ */
+nav {
+  position:fixed; top:0; left:0; right:0; z-index:600;
+  height: 62px;
+  display:flex; align-items:center; justify-content:space-between;
+  padding: 0 40px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(2,2,10,.7);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+}
+.n-logo {
+  display:flex; align-items:center; gap:12px;
+  font-family: var(--fb);
+  font-size: 22px;
+  letter-spacing: .05em;
+  color: #fff;
+  cursor: pointer;
+  background:none; border:none;
+  position:relative;
+}
+.n-logo-badge {
+  font-family: var(--fm);
+  font-size: 8px;
+  letter-spacing: .35em;
+  color: var(--c1);
+  border: 1px solid rgba(0,255,224,.25);
+  padding: 2px 7px;
+  text-transform:uppercase;
+  margin-left: 2px;
+}
+.n-logo-pulse {
+  width:6px; height:6px;
+  background: var(--c1);
+  border-radius:50%;
+  box-shadow: var(--glow1);
+  animation: pulse 2.5s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%,100% { transform:scale(1); opacity:1; box-shadow: var(--glow1); }
+  50% { transform:scale(1.6); opacity:.5; box-shadow: 0 0 30px rgba(0,255,224,.5); }
+}
+.n-center {
+  position:absolute; left:50%; transform:translateX(-50%);
+  display:flex; gap:4px;
+}
+.n-btn {
+  font-family:var(--fm); font-size:9px; letter-spacing:.2em; text-transform:uppercase;
+  color:var(--muted); background:none; border:none; cursor:pointer;
+  padding: 8px 14px;
+  transition: color .25s, background .25s;
+  position:relative;
+  clip-path: polygon(0 0,calc(100% - 6px) 0,100% 6px,100% 100%,6px 100%,0 calc(100% - 6px));
+}
+.n-btn::before {
+  content:'';
+  position:absolute; inset:0;
+  background: rgba(0,255,224,.06);
+  opacity:0;
+  transition: opacity .25s;
+  clip-path: inherit;
+}
+.n-btn:hover, .n-btn.act { color: #fff; }
+.n-btn:hover::before, .n-btn.act::before { opacity:1; }
+.n-btn.act { color: var(--c1); }
+.n-time {
+  font-family:var(--fm); font-size:9px; letter-spacing:.15em; color:var(--muted);
+  display:flex; align-items:center; gap:8px;
+}
+.n-time-dot { width:4px; height:4px; background:var(--c1); border-radius:50%; animation:pulse 2.5s ease-in-out infinite; }
+
+/* ═══════════════════════════════════════════════════════════
+   SIDE DOTS
+═══════════════════════════════════════════════════════════ */
+.side-nav {
+  position:fixed; right:20px; top:50%; transform:translateY(-50%);
+  z-index:500;
+  display:flex; flex-direction:column; align-items:center; gap:16px;
+}
+.sn-item {
+  display:flex; align-items:center; gap:8px; cursor:pointer;
+  flex-direction:row-reverse;
+}
+.sn-dot {
+  width:5px; height:5px; border-radius:50%;
+  background:var(--muted); transition:all .4s;
+}
+.sn-label {
+  font-family:var(--fm); font-size:7px; letter-spacing:.2em; text-transform:uppercase;
+  color:var(--muted); opacity:0; transition:all .3s; white-space:nowrap;
+  transform:translateX(8px);
+}
+.sn-item:hover .sn-label { opacity:1; transform:translateX(0); color:var(--c1); }
+.sn-item:hover .sn-dot, .sn-item.act .sn-dot {
+  background:var(--c1);
+  box-shadow: 0 0 10px var(--c1);
+  transform:scale(1.6);
+}
+.sn-item.act .sn-label { opacity:1; transform:translateX(0); color:var(--c1); }
+
+/* ═══════════════════════════════════════════════════════════
+   PAGE SYSTEM
+═══════════════════════════════════════════════════════════ */
+.pg {
+  position:absolute; inset:0;
+  opacity:0; pointer-events:none;
+  transition: opacity .6s cubic-bezier(.16,1,.3,1), transform .6s cubic-bezier(.16,1,.3,1);
+  transform: translateY(16px) scale(.994);
+  overflow-y:auto; overflow-x:hidden;
+  padding: 62px 40px 80px;
+}
+.pg.act {
+  opacity:1; pointer-events:auto;
+  transform: translateY(0) scale(1);
+}
+.pg::-webkit-scrollbar { width:2px; }
+.pg::-webkit-scrollbar-thumb { background:rgba(0,255,224,.2); }
+.pi {
+  max-width:1140px; margin:0 auto;
+  min-height:calc(100vh - 142px);
+  display:flex; flex-direction:column; justify-content:center;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   GLITCH TEXT
+═══════════════════════════════════════════════════════════ */
+.glitch {
+  position:relative; display:inline-block;
+}
+.glitch::before, .glitch::after {
+  content: attr(data-text);
+  position:absolute; top:0; left:0; width:100%;
+  overflow:hidden;
+}
+.glitch::before {
+  text-shadow: 2px 0 var(--c3);
+  animation: glitch1 3s steps(1) infinite;
+  clip-path: polygon(0 0,100% 0,100% 35%,0 35%);
+}
+.glitch::after {
+  text-shadow: -2px 0 var(--c2);
+  animation: glitch2 3s steps(1) infinite;
+  clip-path: polygon(0 65%,100% 65%,100% 100%,0 100%);
+}
+@keyframes glitch1 {
+  0%,85%,100% { transform:translate(0); opacity:0; }
+  86% { transform:translate(-3px,1px); opacity:.8; }
+  90% { transform:translate(3px,-1px); opacity:.8; }
+  94% { transform:translate(-1px,2px); opacity:.8; }
+  98% { transform:translate(0); opacity:0; }
+}
+@keyframes glitch2 {
+  0%,88%,100% { transform:translate(0); opacity:0; }
+  89% { transform:translate(3px,1px); opacity:.8; }
+  93% { transform:translate(-3px,-1px); opacity:.8; }
+  97% { transform:translate(1px,-2px); opacity:.8; }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SHARED UI COMPONENTS
+═══════════════════════════════════════════════════════════ */
+.chip {
+  font-family:var(--fm); font-size:7.5px; letter-spacing:.18em;
+  text-transform:uppercase; padding:3px 9px;
+  border:1px solid rgba(0,255,224,.15);
+  color:var(--c1); background:rgba(0,255,224,.06);
+}
+.chip.purple { border-color:rgba(123,47,255,.2); color:var(--c2); background:rgba(123,47,255,.06); }
+.chip.pink   { border-color:rgba(255,46,126,.2); color:var(--c3); background:rgba(255,46,126,.06); }
+.chip.gold   { border-color:rgba(255,184,0,.2);  color:var(--c4); background:rgba(255,184,0,.06); }
+.chip.muted  { border-color:var(--border); color:var(--muted); background:transparent; }
+
+.sec-label {
+  font-family:var(--fm); font-size:8px; letter-spacing:.35em; color:var(--c1);
+  text-transform:uppercase; display:flex; align-items:center; gap:10px;
+  margin-bottom:16px;
+}
+.sec-label::before { content:''; width:28px; height:1px; background:var(--c1); opacity:.4; }
+
+/* Glass card */
+.gcard {
+  background: var(--glass);
+  border: 1px solid var(--border);
+  backdrop-filter: blur(8px);
+  transition: background .3s, border-color .3s, transform .3s;
+  position:relative; overflow:hidden;
+}
+.gcard::before {
+  content:''; position:absolute; inset:0;
+  background: linear-gradient(135deg, rgba(0,255,224,.04) 0%, transparent 60%);
+  opacity:0; transition:opacity .4s;
+}
+.gcard:hover { background:var(--glass2); border-color:var(--border2); }
+.gcard:hover::before { opacity:1; }
+
+/* Magnetic button */
+.btn-mag {
+  position:relative; display:inline-flex; align-items:center; gap:10px;
+  font-family:var(--fm); font-size:9.5px; letter-spacing:.2em; text-transform:uppercase;
+  color: #02020a; background:var(--c1); border:none; cursor:pointer;
+  padding: 14px 28px;
+  clip-path: polygon(0 0,calc(100% - 12px) 0,100% 12px,100% 100%,12px 100%,0 calc(100% - 12px));
+  overflow:hidden;
+  transition: box-shadow .3s, transform .2s;
+}
+.btn-mag::before {
+  content:'';
+  position:absolute; inset:0;
+  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,.3) 50%, transparent 100%);
+  transform:translateX(-100%);
+  transition: transform .6s ease;
+}
+.btn-mag:hover::before { transform:translateX(100%); }
+.btn-mag:hover { box-shadow:0 0 30px rgba(0,255,224,.5), 0 0 80px rgba(0,255,224,.2); }
+
+.btn-out {
+  display:inline-flex; align-items:center; gap:10px;
+  font-family:var(--fm); font-size:9.5px; letter-spacing:.2em; text-transform:uppercase;
+  color:var(--c1); background:transparent; cursor:pointer;
+  padding: 13px 26px;
+  border: 1px solid rgba(0,255,224,.3);
+  clip-path: polygon(0 0,calc(100% - 12px) 0,100% 12px,100% 100%,12px 100%,0 calc(100% - 12px));
+  transition: all .3s;
+}
+.btn-out:hover {
+  background:rgba(0,255,224,.08);
+  border-color:var(--c1);
+  box-shadow: inset 0 0 20px rgba(0,255,224,.05);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   LOADER
+═══════════════════════════════════════════════════════════ */
+#ldr {
+  position:fixed; inset:0; z-index:99999;
+  background:var(--bg); display:flex; align-items:center; justify-content:center;
+  transition: opacity .8s, visibility .8s;
+  flex-direction:column; gap:32px;
+}
+#ldr.out { opacity:0; visibility:hidden; }
+.ldr-ascii {
+  font-family:var(--fm); font-size:9px; letter-spacing:.1em; color:rgba(0,255,224,.3);
+  line-height:1.4; text-align:center;
+  animation: ldrFade .8s ease-in-out infinite alternate;
+}
+@keyframes ldrFade { from{opacity:.2} to{opacity:.7} }
+.ldr-bar-wrap { display:flex; flex-direction:column; gap:6px; align-items:center; }
+.ldr-title { font-family:var(--fm); font-size:9px; letter-spacing:.4em; color:var(--c1); text-transform:uppercase; }
+.ldr-bar { width:220px; height:1px; background:rgba(255,255,255,.06); overflow:hidden; }
+.ldr-fill { height:100%; background:linear-gradient(90deg,var(--c2),var(--c1),var(--c3)); background-size:200%;
+  animation: ldrAnim 1.6s ease forwards, ldrShimmer 1.6s linear infinite; }
+@keyframes ldrAnim { to{width:100%} from{width:0%} }
+@keyframes ldrShimmer { 0%{background-position:0%} 100%{background-position:200%} }
+.ldr-pct { font-family:var(--fm); font-size:8px; letter-spacing:.15em; color:var(--muted); margin-top:4px; }
+
+/* ═══════════════════════════════════════════════════════════
+   HOME PAGE
+═══════════════════════════════════════════════════════════ */
+.home-wrap {
+  display:grid;
+  grid-template-columns: 1fr 340px;
+  gap: 60px;
+  align-items: center;
+}
+.home-eyebrow {
+  display:flex; align-items:center; gap:14px;
+  font-family:var(--fm); font-size:8.5px; letter-spacing:.35em;
+  color:var(--c1); text-transform:uppercase; margin-bottom:24px;
+}
+.home-eyebrow-line { width:36px; height:1px; background:var(--c1); opacity:.5; }
+.home-title {
+  font-family: var(--fb);
+  font-size: clamp(64px, 9vw, 130px);
+  line-height: .88;
+  letter-spacing: .01em;
+  color:#fff;
+  margin-bottom: 0;
+}
+.home-title .t-cyan { color:var(--c1); text-shadow: 0 0 40px rgba(0,255,224,.4); }
+.home-title .t-purple { color:var(--c2); text-shadow: 0 0 40px rgba(123,47,255,.4); }
+.home-sub {
+  font-size:14px; line-height:1.85; color:rgba(200,204,232,.5);
+  margin: 28px 0 32px; max-width:560px;
+}
+.home-cta { display:flex; gap:12px; flex-wrap:wrap; }
+
+/* Right panel */
+.home-right { display:flex; flex-direction:column; gap:12px; }
+.home-stat-card {
+  background:var(--glass); border:1px solid var(--border);
+  padding:20px 22px;
+  transition: border-color .3s, background .3s;
+  position:relative; overflow:hidden;
+}
+.home-stat-card:hover { border-color:var(--border2); background:var(--glass2); }
+.home-stat-card::after {
+  content:''; position:absolute; top:0; left:0; right:0; height:1px;
+  background:linear-gradient(90deg,transparent,var(--c1),transparent);
+  opacity:0; transition:opacity .4s;
+}
+.home-stat-card:hover::after { opacity:1; }
+.hsc-num {
+  font-family:var(--fb); font-size:42px; color:#fff;
+  line-height:1; letter-spacing:.02em;
+}
+.hsc-label { font-family:var(--fm); font-size:7.5px; letter-spacing:.25em; color:var(--muted); text-transform:uppercase; margin-top:4px; }
+.hsc-bar { height:1.5px; background:rgba(255,255,255,.05); margin-top:12px; overflow:hidden; }
+.hsc-bar-fill { height:100%; background:var(--c1); }
+.home-scroll-hint {
+  display:flex; align-items:center; gap:10px; margin-top:36px;
+  font-family:var(--fm); font-size:8px; letter-spacing:.2em; color:var(--muted);
+}
+.home-scroll-line { width:40px; height:1px; background:var(--muted); }
+.home-scroll-dot {
+  width:6px; height:6px; border:1px solid var(--muted); border-radius:50%;
+  animation:scrollBounce 2s ease-in-out infinite;
+}
+@keyframes scrollBounce {
+  0%,100%{transform:translateY(0)} 50%{transform:translateY(6px)}
+}
+
+/* Ticker */
+.ticker-wrap {
+  position:fixed; bottom:52px; left:0; right:0; z-index:200;
+  border-top:1px solid var(--border); border-bottom:1px solid var(--border);
+  background:rgba(2,2,10,.6); backdrop-filter:blur(8px);
+  padding:7px 0; overflow:hidden; pointer-events:none;
+}
+.ticker-inner {
+  display:flex; width:max-content;
+  animation:tickerScroll 60s linear infinite;
+  font-family:var(--fm); font-size:8px; letter-spacing:.2em; color:var(--muted);
+  text-transform:uppercase; gap:60px;
+}
+@keyframes tickerScroll { from{transform:translateX(0)} to{transform:translateX(-50%)} }
+.ticker-sep { color:var(--c1); }
+
+/* ═══════════════════════════════════════════════════════════
+   ABOUT PAGE
+═══════════════════════════════════════════════════════════ */
+.about-layout {
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:20px;
+  margin-bottom:20px;
+}
+.about-title-block {
+  grid-column:1/-1;
+  display:flex; justify-content:space-between; align-items:flex-end;
+  margin-bottom:4px;
+}
+.about-big-title {
+  font-family:var(--fb);
+  font-size:clamp(40px,5.5vw,72px);
+  line-height:.92; letter-spacing:.02em; color:#fff;
+}
+.about-bio-card {
+  padding:28px 26px;
+}
+.about-bio-text {
+  font-size:13.5px; line-height:1.85; color:rgba(200,204,232,.55);
+}
+.about-bio-text strong { color:#fff; font-weight:600; }
+.about-attrs {
+  padding:28px 26px;
+  display:flex; flex-direction:column;
+}
+.about-attr {
+  display:flex; justify-content:space-between; align-items:center;
+  padding:11px 0; border-bottom:1px solid var(--border);
+}
+.about-attr:last-child { border-bottom:none; }
+.aa-key { font-family:var(--fm); font-size:8px; letter-spacing:.2em; color:var(--muted); text-transform:uppercase; }
+.aa-val { font-size:13px; font-weight:600; color:#fff; display:flex; align-items:center; gap:6px; }
+
+/* Skill bars */
+.skills-section { grid-column:1/-1; padding:26px; }
+.sk-grid { display:grid; grid-template-columns:1fr 1fr; gap:20px 40px; margin-top:18px; }
+.sk-row { }
+.sk-top { display:flex; justify-content:space-between; margin-bottom:6px; }
+.sk-name { font-family:var(--fm); font-size:8.5px; letter-spacing:.15em; color:var(--text); text-transform:uppercase; }
+.sk-pct { font-family:var(--fm); font-size:8.5px; color:var(--c1); }
+.sk-track { height:2px; background:rgba(255,255,255,.05); overflow:hidden; position:relative; }
+.sk-fill {
+  height:100%; width:0;
+  background: linear-gradient(90deg, var(--c2), var(--c1));
+  transition: width 1.2s cubic-bezier(.16,1,.3,1);
+  position:relative;
+}
+.sk-fill::after {
+  content:''; position:absolute; right:-1px; top:-2px; bottom:-2px;
+  width:4px; background:#fff; border-radius:2px;
+  box-shadow: 0 0 8px var(--c1);
+  opacity:.8;
+}
+.pg.act .sk-fill { width: var(--p); }
+
+/* Timeline */
+.tl { border-top:1px solid var(--border); margin-top:4px; }
+.tl-entry {
+  display:grid; grid-template-columns:140px 1fr 1fr;
+  gap:20px; padding:24px 0; border-bottom:1px solid var(--border);
+  position:relative;
+}
+.tl-period { font-family:var(--fm); font-size:10px; color:var(--muted); padding-top:2px; }
+.tl-role { font-size:17px; font-weight:600; color:#fff; line-height:1.1; }
+.tl-org { font-family:var(--fm); font-size:8px; letter-spacing:.2em; color:var(--c1); text-transform:uppercase; margin-top:5px; }
+.tl-desc { font-size:12.5px; line-height:1.75; color:rgba(200,204,232,.4); padding-top:2px; }
+
+/* ═══════════════════════════════════════════════════════════
+   PROJECTS PAGE
+═══════════════════════════════════════════════════════════ */
+.pj-header {
+  display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:24px;
+}
+.pj-big { font-family:var(--fb); font-size:clamp(36px,5vw,64px); color:#fff; line-height:.9; letter-spacing:.02em; }
+.pj-count { font-family:var(--fm); font-size:9px; letter-spacing:.2em; color:var(--muted); text-transform:uppercase; }
+
+.pj-grid { display:grid; grid-template-columns:1fr 1fr; gap:2px; margin-bottom:2px; }
+.pj-card {
+  padding:32px 28px; min-height:260px;
+  display:flex; flex-direction:column; gap:12px;
+  transition:all .3s; position:relative; overflow:hidden;
+}
+.pj-card::after {
+  content:''; position:absolute; bottom:0; left:0; right:0;
+  height:80px;
+  background:linear-gradient(to top, rgba(0,255,224,.04), transparent);
+  opacity:0; transition:opacity .4s;
+}
+.pj-card:hover::after { opacity:1; }
+.pj-num {
+  font-family:var(--fb); font-size:72px; color:rgba(255,255,255,.04);
+  line-height:1; letter-spacing:.02em;
+  position:absolute; top:12px; right:20px;
+  transition: color .3s;
+}
+.pj-card:hover .pj-num { color:rgba(0,255,224,.06); }
+.pj-top { display:flex; justify-content:space-between; align-items:center; position:relative; z-index:1; }
+.pj-id { font-family:var(--fm); font-size:7.5px; letter-spacing:.25em; color:var(--muted); text-transform:uppercase; }
+.pj-status { font-family:var(--fm); font-size:7.5px; letter-spacing:.15em; color:var(--c1); display:flex; align-items:center; gap:5px; }
+.pj-status::before { content:''; width:4px; height:4px; background:var(--c1); border-radius:50%; animation:pulse 2s ease-in-out infinite; }
+.pj-title { font-family:var(--fb); font-size:28px; color:#fff; letter-spacing:.02em; line-height:1; position:relative; z-index:1; }
+.pj-desc { font-size:12.5px; line-height:1.75; color:rgba(200,204,232,.4); flex:1; position:relative; z-index:1; }
+.pj-footer { display:flex; justify-content:space-between; align-items:center; border-top:1px solid var(--border); padding-top:14px; margin-top:auto; position:relative; z-index:1; }
+.pj-tags { display:flex; gap:4px; flex-wrap:wrap; }
+.pj-link { font-family:var(--fm); font-size:8.5px; letter-spacing:.18em; color:var(--c1); text-decoration:none; text-transform:uppercase; display:flex; align-items:center; gap:5px; transition:gap .2s; }
+.pj-link:hover { gap:9px; }
+
+.pj-featured {
+  padding:24px 28px; display:flex; align-items:center; justify-content:space-between; gap:20px;
+  transition:all .3s;
+}
+.pj-featured:hover { border-color:rgba(0,255,224,.2) !important; }
+
+/* ═══════════════════════════════════════════════════════════
+   EXPERIMENTS PAGE
+═══════════════════════════════════════════════════════════ */
+.ex-header { display:flex; align-items:flex-end; justify-content:space-between; margin-bottom:24px; }
+.ex-big { font-family:var(--fb); font-size:clamp(36px,5vw,64px); color:#fff; line-height:.9; letter-spacing:.02em; }
+
+.ex-list { display:flex; flex-direction:column; gap:2px; }
+.ex-item {
+  display:grid; grid-template-columns:56px 1fr 1fr auto;
+  gap:20px; align-items:center; padding:22px 24px;
+  transition:all .3s; cursor:default; position:relative; overflow:hidden;
+}
+.ex-item::before {
+  content:''; position:absolute; left:0; top:0; bottom:0; width:2px;
+  background:var(--c1); transform:scaleY(0); transition:transform .3s cubic-bezier(.16,1,.3,1);
+}
+.ex-item:hover::before { transform:scaleY(1); }
+.ex-item:hover { background:var(--glass2); border-color:var(--border2) !important; padding-left:28px; }
+.ex-icon { font-size:24px; line-height:1; }
+.ex-name { font-size:15px; font-weight:600; color:#fff; }
+.ex-cat { font-family:var(--fm); font-size:8px; letter-spacing:.18em; color:var(--muted); text-transform:uppercase; margin-top:4px; }
+.ex-desc { font-size:12px; line-height:1.7; color:rgba(200,204,232,.38); }
+
+.exp-terminal {
+  margin-top:16px; background:rgba(0,0,0,.5); border:1px solid var(--border);
+  border-top:2px solid var(--c1); padding:20px 22px;
+  font-family:var(--fm); font-size:10px; line-height:1.8;
+  color:rgba(200,204,232,.4);
+}
+.term-line { display:flex; gap:10px; }
+.term-prompt { color:var(--c1); opacity:.7; }
+.term-cmd { color:rgba(200,204,232,.8); }
+.term-out { color:var(--muted); padding-left:20px; }
+.term-cursor { display:inline-block; width:8px; height:12px; background:var(--c1); animation:termBlink .8s steps(1) infinite; vertical-align:middle; }
+@keyframes termBlink { 0%,100%{opacity:1} 50%{opacity:0} }
+
+/* ═══════════════════════════════════════════════════════════
+   CONTACT PAGE
+═══════════════════════════════════════════════════════════ */
+.ct-layout { display:grid; grid-template-columns:1.1fr 1fr; gap:24px; }
+.ct-big { font-family:var(--fb); font-size:clamp(36px,5vw,64px); color:#fff; line-height:.9; letter-spacing:.02em; margin-bottom:20px; }
+.ct-avail-bar {
+  display:flex; align-items:center; gap:10px; padding:12px 16px;
+  background:rgba(0,255,224,.05); border:1px solid rgba(0,255,224,.12);
+  margin-bottom:20px;
+}
+.ct-avail-dot { width:5px; height:5px; background:var(--c1); border-radius:50%; animation:pulse 2.5s ease-in-out infinite; }
+.ct-avail-text { font-family:var(--fm); font-size:8px; letter-spacing:.2em; color:var(--c1); text-transform:uppercase; }
+.ct-blurb { font-size:13.5px; line-height:1.85; color:rgba(200,204,232,.48); margin-bottom:24px; }
+.ct-channels { display:flex; flex-direction:column; gap:2px; }
+.ct-ch {
+  display:flex; align-items:center; gap:16px; padding:16px 18px;
+  border:1px solid var(--border); text-decoration:none;
+  transition:all .3s; position:relative; overflow:hidden;
+  background:var(--glass);
+}
+.ct-ch::before {
+  content:''; position:absolute; left:0; top:0; bottom:0; width:2px;
+  background:linear-gradient(to bottom, var(--c2), var(--c1));
+  transform:scaleY(0); transition:transform .3s cubic-bezier(.16,1,.3,1);
+}
+.ct-ch:hover::before { transform:scaleY(1); }
+.ct-ch:hover { background:var(--glass2); border-color:var(--border2); padding-left:24px; }
+.ct-ch-ico { font-size:18px; flex-shrink:0; }
+.ct-ch-name { font-family:var(--fm); font-size:9px; letter-spacing:.2em; color:#fff; text-transform:uppercase; }
+.ct-ch-val { font-size:11.5px; color:var(--muted); margin-top:2px; }
+.ct-ch-arr { font-family:var(--fm); color:var(--c1); margin-left:auto; transition:transform .25s; }
+.ct-ch:hover .ct-ch-arr { transform:translate(4px,-4px); }
+
+/* Form */
+.ct-form-title { font-size:17px; font-weight:600; color:#fff; margin-bottom:18px; }
+.ct-field { display:flex; flex-direction:column; gap:6px; margin-bottom:14px; }
+.ct-field label { font-family:var(--fm); font-size:7.5px; letter-spacing:.25em; color:var(--muted); text-transform:uppercase; }
+.ct-field input, .ct-field textarea, .ct-field select {
+  background:rgba(0,0,0,.4); border:1px solid var(--border);
+  color:var(--text); font-family:var(--fm); font-size:12px;
+  padding:12px 14px; outline:none; resize:none; letter-spacing:.02em;
+  transition:border-color .3s, background .3s;
+  -webkit-appearance:none;
+}
+.ct-field input:focus,.ct-field textarea:focus,.ct-field select:focus {
+  border-color:rgba(0,255,224,.4); background:rgba(0,255,224,.02);
+}
+.ct-field textarea { min-height:90px; }
+.ct-form-note { font-family:var(--fm); font-size:8px; letter-spacing:.1em; color:var(--muted); margin-top:12px; }
+
+/* ═══════════════════════════════════════════════════════════
+   FOOTER
+═══════════════════════════════════════════════════════════ */
+footer {
+  position:fixed; bottom:0; left:0; right:0; z-index:500;
+  height:52px; padding:0 40px;
+  border-top:1px solid var(--border);
+  background:rgba(2,2,10,.75); backdrop-filter:blur(20px);
+  display:flex; justify-content:space-between; align-items:center;
+}
+.ft-left { font-family:var(--fm); font-size:8px; letter-spacing:.25em; color:var(--muted); display:flex; align-items:center; gap:10px; text-transform:uppercase; }
+.ft-pulse { width:5px; height:5px; background:var(--c1); border-radius:50%; box-shadow:0 0 8px var(--c1); animation:pulse 2.5s ease-in-out infinite; }
+.ft-links { display:flex; gap:2px; }
+.ft-lnk { font-family:var(--fm); font-size:8.5px; letter-spacing:.16em; color:var(--muted); text-decoration:none; text-transform:uppercase; padding:7px 13px; border:1px solid var(--border); background:var(--glass); transition:all .25s; display:flex; align-items:center; gap:6px; }
+.ft-lnk span { color:var(--c1); opacity:.5; }
+.ft-lnk:hover { color:#fff; background:var(--glass2); border-color:var(--border2); }
+
+/* ═══════════════════════════════════════════════════════════
+   TRANSITION OVERLAY
+═══════════════════════════════════════════════════════════ */
+#overlay {
+  position:fixed; inset:0; z-index:9000; pointer-events:none;
+  background:var(--c1);
+  clip-path: polygon(0 0,0 0,0 100%,0 100%);
+  transition: clip-path .4s cubic-bezier(.76,0,.24,1);
+}
+#overlay.sweep { clip-path: polygon(0 0,100% 0,100% 100%,0 100%); }
+#overlay.out   { clip-path: polygon(100% 0,100% 0,100% 100%,100% 100%); }
+
+/* ═══════════════════════════════════════════════════════════
+   RESPONSIVE
+═══════════════════════════════════════════════════════════ */
+@media(max-width:900px){
+  .home-wrap { grid-template-columns:1fr; }
+  .home-right { flex-direction:row; flex-wrap:wrap; }
+  .home-stat-card { flex:1; min-width:120px; }
+  .about-layout { grid-template-columns:1fr; }
+  .pj-grid { grid-template-columns:1fr; }
+  .ct-layout { grid-template-columns:1fr; }
+  .ex-item { grid-template-columns:40px 1fr; grid-template-rows:auto auto; }
+  .ex-item .ex-desc { grid-column:1/-1; }
+}
+</style>
+</head>
+<body>
+
+<div id="cur"><div id="cur-dot"></div></div>
+<div id="cur-ring"></div>
+
+<div id="ldr">
+  <div class="ldr-ascii">
+    ██╗   ██╗ ██████╗ ██╗  ██╗███████╗██╗     ███████╗ ██████╗ ██╗  ██╗<br>
+    ██║   ██║██╔═══██╗╚██╗██╔╝██╔════╝██║     ██╔════╝██╔═══██╗╚██╗██╔╝<br>
+    ██║   ██║██║   ██║ ╚███╔╝ █████╗  ██║     █████╗  ██║   ██║ ╚███╔╝ <br>
+    ╚██╗ ██╔╝██║   ██║ ██╔██╗ ██╔══╝  ██║     ██╔══╝  ██║   ██║ ██╔██╗ <br>
+     ╚████╔╝ ╚██████╔╝██╔╝ ██╗███████╗███████╗██║     ╚██████╔╝██╔╝ ██╗<br>
+      ╚═══╝   ╚═════╝ ╚═╝  ╚═╝╚══════╝╚══════╝╚═╝      ╚═════╝ ╚═╝  ╚═╝
+  </div>
+  <div class="ldr-bar-wrap">
+    <div class="ldr-title">Booting Runtime</div>
+    <div class="ldr-bar"><div class="ldr-fill"></div></div>
+    <div class="ldr-pct" id="ldr-pct">0%</div>
+  </div>
+</div>
+
+<div id="overlay"></div>
+
+<div class="scanlines"></div>
+<div class="grain"></div>
+<div class="vignette"></div>
+<div class="blob blob-1"></div>
+<div class="blob blob-2"></div>
+<div class="blob blob-3"></div>
+
+<canvas id="c-bg"></canvas>
+<canvas id="c-mid"></canvas>
+<canvas id="c-fg"></canvas>
+
+<nav>
+  <button class="n-logo" onclick="goTo(0)">
+    <span class="n-logo-pulse"></span>
+    VOXELFOX
+    <span class="n-logo-badge">v2.6</span>
+  </button>
+  <div class="n-center">
+    <button class="n-btn act" id="nb0" onclick="goTo(0)">01 Home</button>
+    <button class="n-btn" id="nb1" onclick="goTo(1)">02 About</button>
+    <button class="n-btn" id="nb2" onclick="goTo(2)">03 Projects</button>
+    <button class="n-btn" id="nb3" onclick="goTo(3)">04 Experiments</button>
+    <button class="n-btn" id="nb4" onclick="goTo(4)">05 Contact</button>
+  </div>
+  <div class="n-time"><span class="n-time-dot"></span><span id="live-time"></span></div>
+</nav>
+
+<div class="side-nav">
+  <div class="sn-item act" onclick="goTo(0)"><span class="sn-label">Home</span><span class="sn-dot"></span></div>
+  <div class="sn-item" onclick="goTo(1)"><span class="sn-label">About</span><span class="sn-dot"></span></div>
+  <div class="sn-item" onclick="goTo(2)"><span class="sn-label">Projects</span><span class="sn-dot"></span></div>
+  <div class="sn-item" onclick="goTo(3)"><span class="sn-label">Experiments</span><span class="sn-dot"></span></div>
+  <div class="sn-item" onclick="goTo(4)"><span class="sn-label">Contact</span><span class="sn-dot"></span></div>
+</div>
+
+<div class="ticker-wrap">
+  <div class="ticker-inner" id="ticker"></div>
+</div>
+
+<section class="pg act" id="p0">
+  <div class="pi" style="justify-content:center; padding-top:10px;">
+    <div class="home-wrap">
+      <div>
+        <div class="home-eyebrow">
+          <span class="home-eyebrow-line"></span>
+          COMPILER STATE ONLINE — 2026
+        </div>
+        <h1 class="home-title">
+          <span class="glitch" data-text="SYSTEMS">SYSTEMS</span><br>
+          <span class="t-cyan">ARCHI</span><span class="t-purple">TECT</span><br>
+          <span style="color:rgba(255,255,255,.15)">&amp; RUNTIME</span><br>
+          ENGINEER
+        </h1>
+        <p class="home-sub">
+          Specialized in structural runtime optimization, predictive execution models, and clean script modularity. Translating complex system logic into low-latency, zero-fault production layers that scale without fear.
+        </p>
+        <div class="home-cta">
+          <button class="btn-mag" onclick="goTo(2)">View Projects <span>↗</span></button>
+          <button class="btn-out" onclick="goTo(4)">Get In Touch →</button>
+        </div>
+        <div class="home-scroll-hint">
+          <span class="home-scroll-line"></span>
+          <span class="home-scroll-dot"></span>
+          SCROLL TO EXPLORE
+        </div>
+      </div>
+      <div class="home-right">
+        <div class="home-stat-card">
+          <div class="hsc-num">3+</div>
+          <div class="hsc-label">Live Projects</div>
+          <div class="hsc-bar"><div class="hsc-bar-fill" style="width:80%"></div></div>
+        </div>
+        <div class="home-stat-card">
+          <div class="hsc-num">6</div>
+          <div class="hsc-label">Active Experiments</div>
+          <div class="hsc-bar"><div class="hsc-bar-fill" style="width:60%"></div></div>
+        </div>
+        <div class="home-stat-card">
+          <div class="hsc-num">∞</div>
+          <div class="hsc-label">Iterations</div>
+          <div class="hsc-bar"><div class="hsc-bar-fill" style="width:100%; background:linear-gradient(90deg,var(--c2),var(--c1))"></div></div>
+        </div>
+        <div class="home-stat-card">
+          <div class="hsc-num">0ms</div>
+          <div class="hsc-label">Target Fault Latency</div>
+          <div class="hsc-bar"><div class="hsc-bar-fill" style="width:100%; background:var(--c3)"></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="pg" id="p1">
+  <div class="pi">
+    <div class="about-title-block">
+      <div>
+        <div class="sec-label">[02 // IDENTITY MATRIX]</div>
+        <div class="about-big-title">ABOUT<br><span style="color:var(--c1)">VOXELFOX</span></div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-family:var(--fm);font-size:8px;letter-spacing:.2em;color:var(--muted);text-transform:uppercase;margin-bottom:6px">AVAILABILITY</div>
+        <div class="chip">● OPEN TO WORK</div>
+      </div>
+    </div>
+
+    <div class="about-layout">
+      <div class="gcard about-bio-card">
+        <p class="about-bio-text">
+          Hey — I'm <strong>VoxelFox</strong>, a backend systems architect obsessed with building things that <strong>don't break</strong>. I operate at the intersection of low-latency design and clean code architecture.
+          <br><br>
+          I spend my time compiling production-grade frameworks, optimizing execution pipelines, and pushing the edge of what runtime systems can do. Every line of code is an optimization problem waiting to be solved.
+          <br><br>
+          When I'm not deep in runtime internals, I'm running experiments at the edge of what's possible — testing lock-free data structures, binary protocol parsers, and sandboxed execution environments.
+        </p>
+        <div style="margin-top:20px;display:flex;gap:6px;flex-wrap:wrap">
+          <span class="chip">TypeScript</span>
+          <span class="chip">Rust</span>
+          <span class="chip">Node.js</span>
+          <span class="chip">Go</span>
+          <span class="chip purple">PostgreSQL</span>
+          <span class="chip purple">Redis</span>
+          <span class="chip pink">Docker</span>
+          <span class="chip pink">Kubernetes</span>
+          <span class="chip gold">WebAssembly</span>
+          <span class="chip gold">gRPC</span>
+        </div>
+      </div>
+      <div class="gcard about-attrs">
+        <div class="about-attr"><span class="aa-key">Status</span><span class="aa-val" style="color:var(--c1)"><span style="width:5px;height:5px;background:var(--c1);border-radius:50%;animation:pulse 2.5s ease-in-out infinite;display:inline-block"></span>Available</span></div>
+        <div class="about-attr"><span class="aa-key">Role</span><span class="aa-val">Systems Architect</span></div>
+        <div class="about-attr"><span class="aa-key">Focus</span><span class="aa-val">Backend / Runtime</span></div>
+        <div class="about-attr"><span class="aa-key">Stack</span><span class="aa-val">Polyglot</span></div>
+        <div class="about-attr"><span class="aa-key">Mode</span><span class="aa-val">Remote</span></div>
+        <div class="about-attr"><span class="aa-key">Experience</span><span class="aa-val">3+ Years</span></div>
+        <div class="about-attr"><span class="aa-key">GitHub</span><span class="aa-val" style="color:var(--c1)">@VoxelFox456</span></div>
+        <div class="about-attr"><span class="aa-key">Instagram</span><span class="aa-val" style="color:var(--c1)">@zellhag_x</span></div>
+      </div>
+    </div>
+
+    <div class="gcard skills-section">
+      <div class="sec-label">[PROFICIENCY LAYERS]</div>
+      <div class="sk-grid">
+        <div class="sk-row"><div class="sk-top"><span class="sk-name">TypeScript / Rust</span><span class="sk-pct">92%</span></div><div class="sk-track"><div class="sk-fill" style="--p:92%"></div></div></div>
+        <div class="sk-row"><div class="sk-top"><span class="sk-name">Node.js / Bun</span><span class="sk-pct">88%</span></div><div class="sk-track"><div class="sk-fill" style="--p:88%"></div></div></div>
+        <div class="sk-row"><div class="sk-top"><span class="sk-name">PostgreSQL / Redis</span><span class="sk-pct">85%</span></div><div class="sk-track"><div class="sk-fill" style="--p:85%"></div></div></div>
+        <div class="sk-row"><div class="sk-top"><span class="sk-name">System Architecture</span><span class="sk-pct">90%</span></div><div class="sk-track"><div class="sk-fill" style="--p:90%"></div></div></div>
+        <div class="sk-row"><div class="sk-top"><span class="sk-name">Docker / K8s</span><span class="sk-pct">80%</span></div><div class="sk-track"><div class="sk-fill" style="--p:80%"></div></div></div>
+        <div class="sk-row"><div class="sk-top"><span class="sk-name">Rust / WebAssembly</span><span class="sk-pct">72%</span></div><div class="sk-track"><div class="sk-fill" style="--p:72%"></div></div></div>
+      </div>
+    </div>
+
+    <div class="tl" style="margin-top:20px">
+      <div class="tl-entry">
+        <div class="tl-period">2025 – Present</div>
+        <div><div class="tl-role">Systems Language Architect</div><div class="tl-org">VoxelFox // Independent</div></div>
+        <div class="tl-desc">Compiling fast-rendering architectural systems and procedural engines. Specializing in runtime performance and zero-downtime deployments across distributed environments.</div>
+      </div>
+      <div class="tl-entry">
+        <div class="tl-period">2024 – 2025</div>
+        <div><div class="tl-role">Runtime Optimization Specialist</div><div class="tl-org">Contract</div></div>
+        <div class="tl-desc">Refining script garbage collection layers and thread scheduling tasks. Reduced execution overhead by 40% across multiple production environments.</div>
+      </div>
+      <div class="tl-entry">
+        <div class="tl-period">2023 – 2024</div>
+        <div><div class="tl-role">Core Language Contributor</div><div class="tl-org">Open Source</div></div>
+        <div class="tl-desc">Built isolated environment configurations for parsing complex token streams. Contributed to key modules in active open-source repositories.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="pg" id="p2">
+  <div class="pi">
+    <div class="pj-header">
+      <div>
+        <div class="sec-label">[03 // PRODUCTION MODELS]</div>
+        <div class="pj-big">SELECTED<br><span style="color:var(--c1)">PROJECTS</span></div>
+      </div>
+      <div class="pj-count">3 BUILDS / ALL LIVE</div>
+    </div>
+
+    <div class="pj-grid">
+      <div class="gcard pj-card">
+        <div class="pj-num">01</div>
+        <div class="pj-top">
+          <span class="pj-id">01 / NODE SYSTEM</span>
+          <span class="pj-status">LIVE</span>
+        </div>
+        <h3 class="pj-title">COOLISTIC STREETWEAR</h3>
+        <p class="pj-desc">High-utility transaction framework engineered with strict data structures and seamless database synchronization. Built for zero latency at peak load conditions. Features real-time inventory tracking and custom payment flow architecture.</p>
+        <div class="pj-footer">
+          <div class="pj-tags"><span class="chip">Node.js</span><span class="chip purple">Postgres</span><span class="chip purple">Redis</span></div>
+          <a href="https://coolistic.lovable.app" target="_blank" class="pj-link">Launch ↗</a>
+        </div>
+      </div>
+
+      <div class="gcard pj-card">
+        <div class="pj-num">02</div>
+        <div class="pj-top">
+          <span class="pj-id">02 / RUNTIME LOGIC</span>
+          <span class="pj-status">LIVE</span>
+        </div>
+        <h3 class="pj-title">SHOPO APP HUB</h3>
+        <p class="pj-desc">Data processing platform optimized for instantaneous logic calculations and zero runtime friction. Dynamic module composition at the execution core. Adaptive caching layers with sub-millisecond read latency across concurrent requests.</p>
+        <div class="pj-footer">
+          <div class="pj-tags"><span class="chip">TypeScript</span><span class="chip pink">Bun</span><span class="chip gold">gRPC</span></div>
+          <a href="https://shopo.lovable.app" target="_blank" class="pj-link">Launch ↗</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="gcard pj-featured" style="border:1px solid var(--border);margin-top:2px">
+      <div>
+        <div style="font-family:var(--fm);font-size:7.5px;letter-spacing:.25em;color:var(--muted);text-transform:uppercase;margin-bottom:6px">03 / OPEN SOURCE REPOSITORY</div>
+        <div style="font-family:var(--fb);font-size:24px;color:#fff;letter-spacing:.02em">KOOC SYSTEM LAYERS</div>
+        <div style="font-size:12.5px;color:rgba(200,204,232,.4);margin-top:6px;max-width:400px">Open-source runtime abstraction layer for composable backend modules. Designed for extensibility without sacrificing execution speed.</div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:12px">
+        <div class="pj-tags"><span class="chip">Open Source</span><span class="chip purple">GitHub</span><span class="chip gold">MIT</span></div>
+        <a href="https://github.com/VoxelFox456/KooC" target="_blank" class="pj-link">Explore Repository ↗</a>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:2px;margin-top:18px">
+      <div class="gcard" style="padding:18px 16px;text-align:center">
+        <div style="font-family:var(--fb);font-size:32px;color:var(--c1)">01</div>
+        <div style="font-family:var(--fm);font-size:8px;letter-spacing:.15em;color:var(--muted);text-transform:uppercase;margin-top:4px">Architect</div>
+      </div>
+      <div class="gcard" style="padding:18px 16px;text-align:center">
+        <div style="font-family:var(--fb);font-size:32px;color:var(--c2)">02</div>
+        <div style="font-family:var(--fm);font-size:8px;letter-spacing:.15em;color:var(--muted);text-transform:uppercase;margin-top:4px">Compile</div>
+      </div>
+      <div class="gcard" style="padding:18px 16px;text-align:center">
+        <div style="font-family:var(--fb);font-size:32px;color:var(--c3)">03</div>
+        <div style="font-family:var(--fm);font-size:8px;letter-spacing:.15em;color:var(--muted);text-transform:uppercase;margin-top:4px">Optimize</div>
+      </div>
+      <div class="gcard" style="padding:18px 16px;text-align:center">
+        <div style="font-family:var(--fb);font-size:32px;color:var(--c4)">04</div>
+        <div style="font-family:var(--fm);font-size:8px;letter-spacing:.15em;color:var(--muted);text-transform:uppercase;margin-top:4px">Deploy</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="pg" id="p3">
+  <div class="pi">
+    <div class="ex-header">
+      <div>
+        <div class="sec-label">[04 // SANDBOX LAYER]</div>
+        <div class="ex-big">ACTIVE<br><span style="color:var(--c1)">EXPERIMENTS</span></div>
+      </div>
+      <div style="font-family:var(--fm);font-size:8px;letter-spacing:.2em;color:var(--muted);text-transform:uppercase">6 RUNNING / 2 ARCHIVED</div>
+    </div>
+
+    <div class="ex-list">
+      <div class="gcard ex-item">
+        <div class="ex-icon">⚡</div>
+        <div><div class="ex-name">Zero-Latency Queue Engine</div><div class="ex-cat">Async / Concurrency</div></div>
+        <div class="ex-desc">Lock-free data structures for async message processing under extreme load. Testing custom memory allocators with work-stealing task queues. 18× throughput vs baseline STL queue under 1M ops/sec.</div>
+        <span class="chip" style="white-space:nowrap">In Progress</span>
+      </div>
+      <div class="gcard ex-item">
+        <div class="ex-icon">◈</div>
+        <div><div class="ex-name">Procedural Schema Generator</div><div class="ex-cat">Database / Tooling</div></div>
+        <div class="ex-desc">Auto-generating optimized DB schemas from runtime type inference. Eliminates manual migration drift in large codebases. Currently powering two internal projects with zero schema conflicts.</div>
+        <span class="chip" style="white-space:nowrap;color:var(--c1)">Live</span>
+      </div>
+      <div class="gcard ex-item">
+        <div class="ex-icon">⊕</div>
+        <div><div class="ex-name">Hot-Reload Config Engine</div><div class="ex-cat">Infrastructure / DevOps</div></div>
+        <div class="ex-desc">Swapping environment configs without process restarts. Zero-downtime reconfiguration for distributed service meshes with atomic config transitions and automatic rollback on validation failure.</div>
+        <span class="chip" style="white-space:nowrap">In Progress</span>
+      </div>
+      <div class="gcard ex-item">
+        <div class="ex-icon">⇌</div>
+        <div><div class="ex-name">Binary Protocol Parser</div><div class="ex-cat">Networking / Performance</div></div>
+        <div class="ex-desc">Hand-written binary protocol decoder outperforming JSON by 14×. Designed for high-frequency telemetry ingestion pipelines. Zero-copy deserialization with compile-time schema validation.</div>
+        <span class="chip" style="white-space:nowrap;color:var(--c1)">Live</span>
+      </div>
+      <div class="gcard ex-item">
+        <div class="ex-icon">◻</div>
+        <div><div class="ex-name">Wasm Runtime Sandbox</div><div class="ex-cat">Security / Isolation</div></div>
+        <div class="ex-desc">Sandboxed WebAssembly execution environment for untrusted plugin modules. Isolated memory space with strict syscall interception and capability-based security model.</div>
+        <span class="chip" style="white-space:nowrap">In Progress</span>
+      </div>
+      <div class="gcard ex-item">
+        <div class="ex-icon">⚙</div>
+        <div><div class="ex-name">Thread Pool Scheduler v2</div><div class="ex-cat">OS / Systems</div></div>
+        <div class="ex-desc">Work-stealing scheduler with adaptive backoff. 34% throughput gain over standard OS thread pool. Superseded by Queue Engine experiment — archived for reference.</div>
+        <span class="chip muted" style="white-space:nowrap">Archived</span>
+      </div>
+    </div>
+
+    <div class="exp-terminal" style="margin-top:16px">
+      <div class="term-line"><span class="term-prompt">voxelfox@runtime:~$</span><span class="term-cmd"> cargo bench --all-features</span></div>
+      <div class="term-line term-out">running 12 tests...</div>
+      <div class="term-line term-out">test queue::lock_free_push ... bench: <span style="color:var(--c1)">142 ns/iter</span> (+/- 8)</div>
+      <div class="term-line term-out">test queue::mutex_push    ... bench: <span style="color:var(--c3)">2,617 ns/iter</span> (+/- 44)</div>
+      <div class="term-line term-out">test schema::gen_complex  ... bench: <span style="color:var(--c1)">38 μs/iter</span>  (+/- 2)</div>
+      <div class="term-line" style="margin-top:8px"><span class="term-prompt">voxelfox@runtime:~$</span><span class="term-cmd"> </span><span class="term-cursor"></span></div>
+    </div>
+  </div>
+</section>
+
+<section class="pg" id="p4">
+  <div class="pi">
+    <div class="sec-label">[05 // TRANSMISSION LAYER]</div>
+    <div class="ct-big">GET IN<br><span style="color:var(--c1)">TOUCH</span></div>
+
+    <div class="ct-avail-bar">
+      <span class="ct-avail-dot"></span>
+      <span class="ct-avail-text">Currently available for select contracts &amp; collaborations — Response within 24h</span>
+    </div>
+
+    <div class="ct-layout">
+      <div>
+        <p class="ct-blurb">Have an interesting project, a complex system to build, or just want to talk runtime optimization? I'm always open to conversations that push architecture forward and solve hard problems elegantly.</p>
+        <div class="ct-channels">
+          <a href="mailto:ismarhadi2011@gmail.com" class="ct-ch">
+            <span class="ct-ch-ico">✉</span>
+            <div><div class="ct-ch-name">Email</div><div class="ct-ch-val">ismarhadi2011@gmail.com</div></div>
+            <span class="ct-ch-arr">↗</span>
+          </a>
+          <a href="https://instagram.com/zellhag_x" target="_blank" class="ct-ch">
+            <span class="ct-ch-ico">◎</span>
+            <div><div class="ct-ch-name">Instagram</div><div class="ct-ch-val">@zellhag_x</div></div>
+            <span class="ct-ch-arr">↗</span>
+          </a>
+          <a href="https://github.com/VoxelFox456" target="_blank" class="ct-ch">
+            <span class="ct-ch-ico">⊛</span>
+            <div><div class="ct-ch-name">GitHub</div><div class="ct-ch-val">@VoxelFox456</div></div>
+            <span class="ct-ch-arr">↗</span>
+          </a>
+        </div>
+        <div style="margin-top:20px;padding:20px;background:rgba(0,0,0,.3);border:1px solid var(--border)">
+          <div style="font-family:var(--fm);font-size:8px;letter-spacing:.25em;color:var(--muted);text-transform:uppercase;margin-bottom:12px">PREFERRED CONTACT TYPES</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <span class="chip">System Architecture</span>
+            <span class="chip purple">Performance Audits</span>
+            <span class="chip pink">Consulting</span>
+            <span class="chip gold">Open Source Collab</span>
+            <span class="chip">Backend Projects</span>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="ct-form-title">Send a Message</div>
+        <div class="ct-field"><label>Name</label><input type="text" placeholder="Your name"></div>
+        <div class="ct-field"><label>Email</label><input type="email" placeholder="your@email.com"></div>
+        <div class="ct-field">
+          <label>Project Type</label>
+          <select>
+            <option value="">Select a project type</option>
+            <option>System Architecture</option>
+            <option>Performance Optimization</option>
+            <option>Open Source Collaboration</option>
+            <option>Consulting</option>
+            <option>Other</option>
+          </select>
+        </div>
+        <div class="ct-field"><label>Message</label><textarea placeholder="Describe your project or inquiry..."></textarea></div>
+        <button class="btn-mag">Send Transmission ↗</button>
+        <div class="ct-form-note">// No spam. No sales. Just real conversations about hard engineering problems.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="ft-left"><span class="ft-pulse"></span>SECURE EMERALD ROUTING ACTIVE &nbsp;//&nbsp; VoxelFox v2.6</div>
+  <div class="ft-links">
+    <a href="mailto:ismarhadi2011@gmail.com" class="ft-lnk"><span>//</span>EMAIL</a>
+    <a href="https://instagram.com/zellhag_x" target="_blank" class="ft-lnk"><span>//</span>INSTAGRAM</a>
+    <a href="https://github.com/VoxelFox456" target="_blank" class="ft-lnk"><span>//</span>GITHUB</a>
+  </div>
+</footer>
+
+<script>
+'use strict';
+
+/* ─── CLOCK ─── */
+function updateClock(){
+  const t=new Date();
+  document.getElementById('live-time').textContent=
+    t.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+}
+setInterval(updateClock,1000); updateClock();
+
+/* ─── TICKER ─── */
+const tItems=[
+  'Runtime Optimization','Zero-Latency Systems','Systems Architecture','TypeScript','Rust','Node.js','PostgreSQL','Redis','Docker','K8s','Open Source','WebAssembly','gRPC','Binary Protocols','Concurrent Programming','Lock-Free Data Structures','Production Engineering','VoxelFox','2026'
+];
+const ticker=document.getElementById('ticker');
+const full=([...tItems,...tItems,...tItems,...tItems]).map(t=>`<span>${t}</span><span class="ticker-sep">//</span>`).join('');
+ticker.innerHTML=full;
+
+/* ─── CURSOR ─── */
+const curEl=document.getElementById('cur'), curRing=document.getElementById('cur-ring');
+let mx=-100,my=-100,rx=-100,ry=-100;
+document.addEventListener('mousemove',e=>{mx=e.clientX;my=e.clientY});
+(function curLoop(){
+  curEl.style.left=mx+'px'; curEl.style.top=my+'px';
+  rx+=(mx-rx)*.12; ry+=(my-ry)*.12;
+  curRing.style.left=rx+'px'; curRing.style.top=ry+'px';
+  requestAnimationFrame(curLoop);
+})();
+document.querySelectorAll('a,button,.sn-item').forEach(el=>{
+  el.addEventListener('mouseenter',()=>document.body.classList.add('hovering'));
+  el.addEventListener('mouseleave',()=>document.body.classList.remove('hovering'));
+});
+
+/* ─── LOADER ─── */
+let pct=0;
+const pctEl=document.getElementById('ldr-pct');
+const pctInt=setInterval(()=>{
+  pct+=Math.random()*18;
+  if(pct>100){pct=100;clearInterval(pctInt);}
+  pctEl.textContent=Math.floor(pct)+'%';
+},100);
+setTimeout(()=>document.getElementById('ldr').classList.add('out'),1800);
+
+/* ─── PAGE NAVIGATION ─── */
+const NUM=5, pages=[], navBtns=[], sideDots=[];
+for(let i=0;i<NUM;i++){
+  pages.push(document.getElementById('p'+i));
+  navBtns.push(document.getElementById('nb'+i));
+}
+document.querySelectorAll('.sn-item').forEach(el=>sideDots.push(el));
+
+let cur_pg=0, transitioning=false;
+const overlay=document.getElementById('overlay');
+
+function goTo(idx){
+  if(idx===cur_pg||transitioning)return;
+  transitioning=true;
+  overlay.classList.remove('sweep','out');
+  void overlay.offsetWidth;
+  overlay.style.background=(['#00ffe0','#7b2fff','#ff2e7e','#ffb800','#00ffe0'])[idx];
+  overlay.classList.add('sweep');
+  setTimeout(()=>{
+    pages[cur_pg].classList.remove('act');
+    navBtns[cur_pg].classList.remove('act');
+    sideDots[cur_pg].classList.remove('act');
+    cur_pg=idx;
+    pages[cur_pg].classList.add('act');
+    navBtns[cur_pg].classList.add('act');
+    sideDots[cur_pg].classList.add('act');
+    // Trigger 3D morph
+    tgtNodes=SHAPES[idx].nodes;
+    tgtEdges=SHAPES[idx].edges;
+    fgRX+=1.2; fgRY+=1.6;
+    bgTX+=.5; bgTY+=.8;
+    overlay.classList.add('out');
+    overlay.classList.remove('sweep');
+    setTimeout(()=>{ overlay.classList.remove('out'); transitioning=false; },450);
+  },220);
+}
+
+document.addEventListener('keydown',e=>{
+  if(e.key==='ArrowRight'||e.key==='ArrowDown') goTo(Math.min(NUM-1,cur_pg+1));
+  if(e.key==='ArrowLeft'||e.key==='ArrowUp')   goTo(Math.max(0,cur_pg-1));
+});
+
+/* ─── 3D ENGINE ─── */
+const bgC=document.getElementById('c-bg'),  bgX=bgC.getContext('2d');
+const mdC=document.getElementById('c-mid'), mdX=mdC.getContext('2d');
+const fgC=document.getElementById('c-fg'),  fgX=fgC.getContext('2d');
+
+let W,H;
+function resize(){
+  W=bgC.width=mdC.width=fgC.width=window.innerWidth;
+  H=bgC.height=mdC.height=fgC.height=window.innerHeight;
+}
+resize();
+window.addEventListener('resize',resize);
+
+/* Background particle field */
+const STARS=[];
+for(let i=0;i<180;i++) STARS.push({
+  x:Math.random()*4000-2000,
+  y:Math.random()*4000-2000,
+  z:Math.random()*3000,
+  r:Math.random()*1.2+.2
+});
+
+/* Grid lattice */
+const GRID=[];
+const GS=6, SP=65;
+for(let x=0;x<GS;x++) for(let y=0;y<GS;y++) for(let z=0;z<5;z++)
+  GRID.push({x:(x-(GS-1)/2)*SP,y:(y-(GS-1)/2)*SP,z:(z-2)*SP*1.2});
+
+/* ─── SHAPES: 5 distinct per page ─── */
+const rawShapes=[
+  // 0 HOME: orbiting hypercube with star
+  {nodes:[
+    {x:-28,y:-28,z:-28},{x:28,y:-28,z:-28},{x:28,y:28,z:-28},{x:-28,y:28,z:-28},
+    {x:-28,y:-28,z:28},{x:28,y:-28,z:28},{x:28,y:28,z:28},{x:-28,y:28,z:28},
+    {x:-60,y:-60,z:-60},{x:60,y:-60,z:-60},{x:60,y:60,z:-60},{x:-60,y:60,z:-60},
+    {x:-60,y:-60,z:60},{x:60,y:-60,z:60},{x:60,y:60,z:60},{x:-60,y:60,z:60},
+    {x:0,y:-80,z:0},{x:80,y:0,z:0},{x:0,y:80,z:0},{x:-80,y:0,z:0},{x:0,y:0,z:80},{x:0,y:0,z:-80}
+  ],edges:[
+    [0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7],
+    [8,9],[9,10],[10,11],[11,8],[12,13],[13,14],[14,15],[15,12],[8,12],[9,13],[10,14],[11,15],
+    [0,8],[1,9],[2,10],[3,11],[4,12],[5,13],[6,14],[7,15],
+    [16,17],[17,18],[18,19],[19,16],[16,20],[17,20],[18,20],[19,20],[16,21],[17,21],[18,21],[19,21]
+  ]},
+  // 1 ABOUT: human diamond + spine
+  {nodes:[
+    {x:0,y:-68,z:0},
+    {x:44,y:-22,z:0},{x:0,y:-22,z:44},{x:-44,y:-22,z:0},{x:0,y:-22,z:-44},
+    {x:26,y:12,z:0},{x:0,y:12,z:26},{x:-26,y:12,z:0},{x:0,y:12,z:-26},
+    {x:0,y:68,z:0},
+    {x:56,y:-8,z:0},{x:-56,y:-8,z:0},
+    {x:0,y:-68,z:0},{x:0,y:-44,z:0},{x:0,y:-20,z:0},{x:0,y:4,z:0},{x:0,y:28,z:0},{x:0,y:52,z:0},
+    {x:20,y:-50,z:15},{x:-20,y:-50,z:-15}
+  ],edges:[
+    [0,1],[0,2],[0,3],[0,4],[1,2],[2,3],[3,4],[4,1],
+    [1,5],[2,6],[3,7],[4,8],[5,6],[6,7],[7,8],[8,5],
+    [5,9],[6,9],[7,9],[8,9],
+    [10,1],[11,3],[10,5],[11,7],
+    [12,13],[13,14],[14,15],[15,16],[16,17],
+    [18,0],[19,0],[18,1],[19,3]
+  ]},
+  // 2 PROJECTS: server stack / datacenter
+  {nodes:[
+    {x:-50,y:-55,z:-50},{x:50,y:-55,z:-50},{x:50,y:-55,z:50},{x:-50,y:-55,z:50},
+    {x:-50,y:-18,z:-50},{x:50,y:-18,z:-50},{x:50,y:-18,z:50},{x:-50,y:-18,z:50},
+    {x:-50,y:18,z:-50},{x:50,y:18,z:-50},{x:50,y:18,z:50},{x:-50,y:18,z:50},
+    {x:-50,y:55,z:-50},{x:50,y:55,z:-50},{x:50,y:55,z:50},{x:-50,y:55,z:50},
+    {x:-60,y:-55,z:0},{x:60,y:-55,z:0},{x:-60,y:55,z:0},{x:60,y:55,z:0},
+    {x:0,y:0,z:-65},{x:0,y:0,z:65}
+  ],edges:[
+    [0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[8,9],[9,10],[10,11],[11,8],[12,13],[13,14],[14,15],[15,12],
+    [0,4],[1,5],[2,6],[3,7],[4,8],[5,9],[6,10],[7,11],[8,12],[9,13],[10,14],[11,15],
+    [16,17],[18,19],[20,21],[16,18],[17,19]
+  ]},
+  // 3 EXPERIMENTS: atom orbital model
+  {nodes:[
+    {x:0,y:0,z:0},
+    {x:60,y:0,z:0},{x:42,y:42,z:0},{x:0,y:60,z:0},{x:-42,y:42,z:0},
+    {x:-60,y:0,z:0},{x:-42,y:-42,z:0},{x:0,y:-60,z:0},{x:42,y:-42,z:0},
+    {x:60,y:0,z:0},{x:42,y:0,z:42},{x:0,y:0,z:60},{x:-42,y:0,z:42},
+    {x:-60,y:0,z:0},{x:-42,y:0,z:-42},{x:0,y:0,z:-60},{x:42,y:0,z:-42},
+    {x:0,y:60,z:0},{x:0,y:42,z:42},{x:0,y:0,z:60},{x:0,y:-42,z:42},
+    {x:0,y:-60,z:0}
+  ],edges:[
+    [0,1],[0,3],[0,5],[0,7],[0,11],[0,15],[0,17],[0,21],
+    [1,2],[2,3],[3,4],[4,5],[5,6],[6,7],[7,8],[8,1],
+    [9,10],[10,11],[11,12],[12,13],[13,14],[14,15],[15,16],[16,9],
+    [17,18],[18,19],[19,20],[20,21],[21,17]
+  ]},
+  // 4 CONTACT: signal tower / broadcast
+  {nodes:[
+    {x:-44,y:62,z:-44},{x:44,y:62,z:-44},{x:44,y:62,z:44},{x:-44,y:62,z:44},
+    {x:-22,y:18,z:-22},{x:22,y:18,z:-22},{x:22,y:18,z:22},{x:-22,y:18,z:22},
+    {x:-10,y:-16,z:-10},{x:10,y:-16,z:-10},{x:10,y:-16,z:10},{x:-10,y:-16,z:10},
+    {x:0,y:-55,z:0},
+    {x:36,y:-26,z:0},{x:-36,y:-26,z:0},
+    {x:52,y:-4,z:0},{x:-52,y:-4,z:0},
+    {x:66,y:18,z:0},{x:-66,y:18,z:0},
+    {x:0,y:-55,z:36},{x:0,y:-55,z:-36},
+    {x:0,y:-26,z:52},{x:0,y:-26,z:-52}
+  ],edges:[
+    [0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[8,9],[9,10],[10,11],[11,8],
+    [0,4],[1,5],[2,6],[3,7],[4,8],[5,9],[6,10],[7,11],
+    [8,12],[9,12],[10,12],[11,12],
+    [12,13],[12,14],[13,15],[14,16],[15,17],[16,18],
+    [12,19],[12,20],[19,21],[20,22],[21,23],[22,23]
+  ]}
+];
+
+const MAX_N=24;
+const SHAPES=rawShapes.map(s=>{
+  const nodes=s.nodes.map(n=>({...n}));
+  while(nodes.length<MAX_N) nodes.push({...nodes[nodes.length-1]});
+  return {nodes,edges:s.edges};
+});
+
+let tgtNodes=SHAPES[0].nodes, tgtEdges=SHAPES[0].edges;
+let rNodes=SHAPES[0].nodes.map(n=>({...n}));
+
+/* Camera */
+let bgRX=0,bgRY=0,bgTX=0,bgTY=0;
+let fgRX=0,fgRY=0;
+let mTX=0,mTY=0,mX2=0,mY2=0;
+window.addEventListener('mousemove',e=>{
+  mTX=(e.clientX-W/2)*.0008;
+  mTY=(e.clientY-H/2)*.0008;
+});
+
+/* Mouse cursor particles */
+const PTCL=[];
+window.addEventListener('mousemove',e=>{
+  if(Math.random()>.6) PTCL.push({x:e.clientX,y:e.clientY,life:1,vx:(Math.random()-.5)*2,vy:(Math.random()-.5)*2,r:Math.random()*1.5+.4,col:(['#00ffe0','#7b2fff','#ff2e7e'])[Math.floor(Math.random()*3)]});
+});
+
+function proj(n,rx,ry,cx,cy,fov,off){
+  const x1=n.x*Math.cos(ry)-n.z*Math.sin(ry);
+  const z1=n.z*Math.cos(ry)+n.x*Math.sin(ry);
+  const y2=n.y*Math.cos(rx)-z1*Math.sin(rx);
+  const z2=z1*Math.cos(rx)+n.y*Math.sin(rx);
+  const s=fov/(fov+z2+off);
+  return {x:x1*s+cx,y:y2*s+cy,z:z2,s};
+}
+
+function render(){
+  bgX.clearRect(0,0,W,H); mdX.clearRect(0,0,W,H); fgX.clearRect(0,0,W,H);
+
+  /* Update transforms */
+  bgTX+=.0006; bgTY+=.00035;
+  bgRX+=(bgTX-bgRX)*.035; bgRY+=(bgTY-bgRY)*.035;
+  mX2+=(mTX-mX2)*.055; mY2+=(mTY-mY2)*.055;
+  fgRX+=.0022+mY2*.016; fgRY+=.0038+mX2*.016;
+
+  /* Lerp shape morph */
+  for(let i=0;i<MAX_N;i++){
+    rNodes[i].x+=(tgtNodes[i].x-rNodes[i].x)*.075;
+    rNodes[i].y+=(tgtNodes[i].y-rNodes[i].y)*.075;
+    rNodes[i].z+=(tgtNodes[i].z-rNodes[i].z)*.075;
+  }
+
+  /* ── BG: star field ── */
+  const sCX=W*.5, sCY=H*.5;
+  bgX.save();
+  STARS.forEach(s=>{
+    const p=proj(s,bgRX*.3,bgRY*.3,sCX,sCY,800,0);
+    if (p.s > 0) { 
+      const a=Math.max(0,Math.min(1,(s.r+.2)*p.s*.8));
+      bgX.beginPath();
+      bgX.fillStyle=`rgba(200,204,232,${a*.35})`;
+      bgX.arc(p.x,p.y,p.s*s.r*.6,0,Math.PI*2);
+      bgX.fill();
+    }
+  });
+  bgX.restore();
+
+  /* ── MID: grid lattice ── */
+  const gCX=W*.5, gCY=H*.5;
+  const gp=GRID.map(n=>proj(n,bgRX*.7,bgRY*.7,gCX,gCY,420,200));
+  mdX.beginPath();
+  mdX.strokeStyle='rgba(0,255,224,.018)';
+  mdX.lineWidth=.7;
+  for(let i=0;i<GRID.length;i++){
+    if((i+1)%GS!==0){mdX.moveTo(gp[i].x,gp[i].y);mdX.lineTo(gp[i+1].x,gp[i+1].y);}
+    if(i+GS<GRID.length){mdX.moveTo(gp[i].x,gp[i].y);mdX.lineTo(gp[i+GS].x,gp[i+GS].y);}
+    if(i+GS*GS<GRID.length){mdX.moveTo(gp[i].x,gp[i].y);mdX.lineTo(gp[i+GS*GS].x,gp[i+GS*GS].y);}
+  }
+  mdX.stroke();
+
+  /* ── FG: morphing shape ── */
+  const fCX=W*.5, fCY=H*.48;
+  const fp=rNodes.map(n=>proj(n,fgRX,fgRY,fCX,fCY,480,130));
+
+  /* Shadow pass */
+  fgX.save();
+  fgX.shadowBlur=18;
+  fgX.shadowColor='rgba(0,255,224,.2)';
+  fgX.beginPath();
+  fgX.strokeStyle='rgba(0,255,224,.16)';
+  fgX.lineWidth=1.4;
+  tgtEdges.forEach(e=>{
+    fgX.moveTo(fp[e[0]].x,fp[e[0]].y);
+    fgX.lineTo(fp[e[1]].x,fp[e[1]].y);
+  });
+  fgX.stroke();
+  fgX.restore();
+
+  /* Purple accent edges */
+  fgX.beginPath();
+  fgX.strokeStyle='rgba(123,47,255,.08)';
+  fgX.lineWidth=2.5;
+  tgtEdges.slice(0,Math.ceil(tgtEdges.length*.3)).forEach(e=>{
+    fgX.moveTo(fp[e[0]].x,fp[e[0]].y);
+    fgX.lineTo(fp[e[1]].x,fp[e[1]].y);
+  });
+  fgX.stroke();
+
+  /* Depth-sorted nodes */
+  const sorted=[...fp.entries()].sort((a,b)=>a[1].z-b[1].z);
+  let maxZ=-Infinity; fp.forEach(p=>{ if(p.z>maxZ)maxZ=p.z; });
+  sorted.forEach(([i,pt])=>{
+    if(i>=tgtNodes.length) return;
+    const depth=Math.max(0,Math.min(1,(pt.z+200)/350));
+    const alpha=.3+depth*.6;
+    const r=1.4+depth*1.2;
+    /* halo */
+    if(pt.z>maxZ*.7){
+      fgX.beginPath();
+      const hg=fgX.createRadialGradient(pt.x,pt.y,0,pt.x,pt.y,10);
+      hg.addColorStop(0,'rgba(0,255,224,.25)');
+      hg.addColorStop(1,'transparent');
+      fgX.fillStyle=hg;
+      fgX.arc(pt.x,pt.y,10,0,Math.PI*2);
+      fgX.fill();
+    }
+    fgX.beginPath();
+    fgX.fillStyle=`rgba(0,255,224,${alpha})`;
+    fgX.arc(pt.x,pt.y,r,0,Math.PI*2);
+    fgX.fill();
+  });
+
+  /* ── Cursor particle trail ── */
+  for(let i=PTCL.length-1;i>=0;i--){
+    const p=PTCL[i];
+    p.life-=.048; p.x+=p.vx; p.y+=p.vy;
+    
+    // [FIX APPLIED]: Only draw the particle if its remaining life is greater than 0. 
+    // This prevents arc() from throwing a DOMException with a negative radius!
+    if (p.life > 0) {
+      fgX.save();
+      fgX.globalAlpha=p.life*.32;
+      fgX.fillStyle=p.col;
+      fgX.beginPath();
+      fgX.arc(p.x,p.y,p.r*p.life,0,Math.PI*2);
+      fgX.fill();
+      fgX.restore();
+    }
+
+    if(p.life<=0) PTCL.splice(i,1);
+  }
+
+  requestAnimationFrame(render);
+}
+render();
+</script>
+
+<script>
+/* Extended runtime profiling data */
+const RUNTIME_PROFILES = [
+  { id:'rp-001', label:'Queue throughput benchmark', unit:'ops/sec', values:[847200,921440,1024800,1102300,1189900,1247600,1304100,1381700,1422900,1490200], baseline:200000, target:1500000, tags:['async','concurrency','lock-free'], description:'Sustained throughput across 10 sample windows under constant 1M ops/sec pressure. Lock-free design eliminates contention bottlenecks observed in mutex-based baseline.', methodology:'Each window represents 5s of sustained load. Worker threads pinned to physical cores. NUMA-aware memory allocation enabled.', hardware:'AMD Ryzen 9 7950X, DDR5-6000, NVMe Gen4' },
+  { id:'rp-002', label:'Schema generation latency', unit:'μs', values:[42.1,38.7,36.2,35.9,34.8,34.1,33.7,33.2,32.9,32.4], baseline:8200, target:30, tags:['database','codegen','inference'], description:'Automated schema generation from TypeScript interfaces. Compiler-time inference eliminates runtime reflection overhead. Results improve with JIT warmup.', methodology:'Cold start measured separately. Values shown after 100 warmup iterations. Schema complexity normalized to 12 tables with 8 relations each.', hardware:'Intel Core i9-13900K, DDR5-5600' },
+  { id:'rp-003', label:'Binary protocol parse rate', unit:'MB/s', values:[2840,3120,3380,3510,3690,3820,3950,4080,4190,4310], baseline:290, target:4000, tags:['networking','serialization','binary'], description:'Custom binary protocol decoder vs JSON baseline. Zero-copy deserialization with SIMD acceleration where available. Sustained performance at 4+ GB/s on modern hardware.', methodology:'Fixed 100MB payload, repeated 50 times. Memory pre-warmed. Comparison against fastest available JSON library (simdjson).', hardware:'AMD EPYC 7763, DDR4-3200 ECC, 256GB' },
+  { id:'rp-004', label:'Thread scheduler efficiency', unit:'%cpu', values:[71.2,74.8,77.3,79.1,81.4,82.9,84.2,85.7,86.3,87.1], baseline:52.0, target:90.0, tags:['os','threading','scheduler'], description:'Work-stealing scheduler CPU utilization under heterogeneous task mix. Adaptive backoff reduces spin-wait overhead. Cross-NUMA locality awareness improves cache hit rates.', methodology:'Task mix: 60% CPU-bound, 25% IO-bound, 15% mixed. Measurement via perf stat over 60s windows. Idle threads parked via futex.', hardware:'2× Intel Xeon Gold 6338, 512GB DDR4 ECC' },
+  { id:'rp-005', label:'Config reload latency', unit:'ms', values:[0.82,0.79,0.76,0.74,0.71,0.69,0.67,0.65,0.64,0.62], baseline:340, target:1.0, tags:['config','hot-reload','infra'], description:'Hot configuration reload without process restart. Atomic swap ensures zero-downtime transitions. Validation pipeline runs in parallel before swap commitment.', methodology:'Config file modified on disk, time measured from inotify event to first request served with new config. 1000 reload cycles measured.', hardware:'Linux 6.5, ext4 filesystem, NVMe Gen4' },
+  { id:'rp-006', label:'Wasm sandbox startup', unit:'ms', values:[3.2,3.0,2.8,2.7,2.6,2.5,2.4,2.35,2.28,2.20], baseline:28.0, target:2.0, tags:['wasm','security','isolation'], description:'WebAssembly module instantiation with memory sandbox initialization. Module pre-compilation via Cranelift backend. Instance pooling reduces steady-state overhead to ~0.1ms.', methodology:'Module: 50KB Wasm binary. Full isolation stack: memory limits, fuel metering, capability grants. Measured from API call to first exported function availability.', hardware:'Intel Core i7-13700K, Wasmtime 14.0' }
+];
+
+const ARCH_PATTERNS = [
+  { name:'Event Sourcing', maturity:'production', description:'Append-only event log as source of truth. Read models derived via projection. Enables full audit trail, temporal queries, and retroactive schema changes.', tradeoffs:{pros:['Full history',  'Temporal queries','Schema evolution','Natural audit log'],cons:['Storage growth','Query complexity','Eventual consistency','Learning curve']}, useCases:['Financial systems','Collaborative editing','Distributed caches','Audit requirements'], tags:['cqrs','events','distributed'] },
+  { name:'Circuit Breaker', maturity:'production', description:'Fault isolation pattern preventing cascade failures across service boundaries. Three states: Closed, Open, Half-Open. Configurable thresholds and recovery probes.', tradeoffs:{pros:['Fault isolation','Graceful degradation','Self-healing','Observability'],cons:['Complexity','False positives','Configuration overhead','State synchronization']}, useCases:['Microservices','External API calls','Database connections','Third-party integrations'], tags:['resilience','distributed','patterns'] },
+  { name:'Bulkhead', maturity:'production', description:'Resource isolation pattern. Thread pools, connection pools, and semaphores partitioned per consumer. Prevents noisy neighbors from exhausting shared resources.', tradeoffs:{pros:['Resource isolation','Predictable performance','Failure containment','SLA enforcement'],cons:['Resource overhead','Configuration complexity','Monitoring burden','Over-provisioning risk']}, useCases:['Multi-tenant SaaS','Mixed workload systems','API rate limiting','Database connection management'], tags:['resilience','isolation','resources'] },
+  { name:'Saga Pattern', maturity:'production', description:'Distributed transaction coordinator via choreography or orchestration. Compensating transactions ensure eventual consistency without two-phase commit overhead.', tradeoffs:{pros:['Distributed transactions','No 2PC overhead','Service autonomy','Scalability'],cons:['Complexity','Compensating logic','Eventual consistency','Debugging difficulty']}, useCases:['Order processing','Booking systems','Financial transfers','Multi-step workflows'], tags:['transactions','distributed','consistency'] },
+  { name:'CQRS', maturity:'production', description:'Command Query Responsibility Segregation. Separate read and write models optimized independently. Enables read-scaling, polyglot persistence, and event-driven architecture.', tradeoffs:{pros:['Read/write scaling','Model optimization','Technology flexibility','Event sourcing alignment'],cons:['Sync complexity','Data duplication','Eventual consistency','Operational overhead']}, useCases:['High-read workloads','Complex domains','Event sourcing','Reporting systems'], tags:['architecture','patterns','scalability'] },
+  { name:'Strangler Fig', maturity:'production', description:'Incremental legacy modernization via facade routing. New functionality implemented alongside old system. Traffic gradually migrated. Zero big-bang rewrite risk.', tradeoffs:{pros:['Low migration risk','Incremental delivery','Business continuity','Rollback capability'],cons:['Long transition','Parallel maintenance','Integration complexity','Routing overhead']}, useCases:['Legacy modernization','Monolith decomposition','Technology migration','Risk-averse teams'], tags:['migration','patterns','legacy'] },
+  { name:'Service Mesh', maturity:'experimental', description:'Infrastructure layer handling service-to-service communication. Observability, security, and traffic management without application code changes. Sidecar proxy model.', tradeoffs:{pros:['Zero-code observability','mTLS everywhere','Traffic control','Failure injection'],cons:['Latency overhead','Complexity',  'Resource usage','Operational expertise']}, useCases:['Microservices at scale','Zero-trust networking','Advanced traffic management','Multi-cluster'], tags:['infrastructure','kubernetes','networking'] },
+  { name:'Backpressure', maturity:'production', description:'Flow control mechanism preventing fast producers from overwhelming slow consumers. Pull-based communication model. Reactive Streams specification compliance.', tradeoffs:{pros:['Memory stability','Predictable latency','Resource efficiency','Flow control'],cons:['Added complexity','Latency tradeoff','Buffer tuning','Protocol support'],}, useCases:['Stream processing','Message queues','HTTP/2 streams','Event-driven systems'], tags:['reactive','streaming','performance'] }
+];
+
+const TOOLCHAIN_MATRIX = {
+  languages: [
+    { name:'TypeScript', rating:9.2, use:'Primary application layer, API services, tooling', yearsUsed:3, projectCount:12, preferredRuntime:'Node.js / Bun', notes:'Strict mode always. Zod for runtime validation. ts-pattern for exhaustive matching.' },
+    { name:'Rust', rating:8.1, use:'Performance-critical systems, CLI tools, WASM', yearsUsed:2, projectCount:5, preferredRuntime:'Native / WASM', notes:'Tokio for async. Axum for HTTP. serde for serialization. Prefer Arc<Mutex> sparingly.' },
+    { name:'Go', rating:7.8, use:'Infrastructure tooling, CLI, simple services', yearsUsed:2, projectCount:4, preferredRuntime:'Native', notes:'Excellent for ops tooling. Goroutines + channels over mutexes where possible.' },
+    { name:'Python', rating:6.5, use:'Data analysis, scripting, ML experimentation', yearsUsed:3, projectCount:8, preferredRuntime:'CPython 3.12+', notes:'Type hints mandatory in production code. asyncio for I/O bound work.' },
+    { name:'SQL', rating:8.8, use:'Database queries, migrations, analytics', yearsUsed:3, projectCount:15, preferredRuntime:'PostgreSQL 16', notes:'CTEs over subqueries. Partial indexes. EXPLAIN ANALYZE always. Generated columns.' }
+  ],
+  databases: [
+    { name:'PostgreSQL', rating:9.4, use:'Primary OLTP, JSONB documents, full-text search', version:'16.x', extensions:['pgvector','TimescaleDB','pg_trgm','PostGIS'], notes:'Connection pooling via PgBouncer. Logical replication for read replicas. Partitioning for large tables.' },
+    { name:'Redis', rating:8.6, use:'Caching, session store, pub/sub, rate limiting', version:'7.x', extensions:['RedisJSON','RediSearch','RedisTimeSeries'], notes:'Cluster mode for high availability. Lua scripts for atomic operations. KeyDB for single-node multi-thread.' },
+    { name:'ClickHouse', rating:7.9, use:'Analytics, time-series, aggregations', version:'24.x', extensions:[], notes:'MergeTree family for time-series. Materialized views for pre-aggregation. Skip indexes for sparse data.' },
+    { name:'SQLite', rating:7.2, use:'Embedded, edge, testing, local-first apps', version:'3.44+', extensions:['SQLite-Vec','CR-SQLite'], notes:'WAL mode always. FTS5 for full-text. Excellent for edge deployments. litestream for replication.' }
+  ],
+  infrastructure: [
+    { name:'Docker', rating:9.0, use:'Development, CI, packaging', mastery:'Expert', notes:'Multi-stage builds. Layer caching optimization. BuildKit enabled. Rootless containers where possible.' },
+    { name:'Kubernetes', rating:7.5, use:'Production orchestration', mastery:'Intermediate', notes:'Helm for templating. Kustomize for overlays. HPA/VPA for scaling. Network policies for isolation.' },
+    { name:'GitHub Actions', rating:8.8, use:'CI/CD pipelines', mastery:'Expert', notes:'Composite actions for reuse. Environments for deployment gating. OIDC for cloud auth. Self-hosted for performance.' },
+    { name:'Terraform', rating:7.0, use:'Infrastructure as Code', mastery:'Intermediate', notes:'Modules for reusability. State locking via S3/DynamoDB. Terragrunt for DRY multi-env configs.' },
+    { name:'Nginx', rating:8.2, use:'Reverse proxy, load balancing, TLS termination', mastery:'Advanced', notes:'Upstream keepalive. Gzip compression. Rate limiting. Lua via OpenResty for complex routing.' }
+  ]
+};
+
+const DESIGN_PRINCIPLES = [
+  { title:'Make it Fast First', content:'Performance is not an afterthought. Benchmark before and after every significant change. The system should be profiled continuously in production, not just during load tests.' },
+  { title:'Explicit Over Implicit', content:'Code should not surprise the reader. Side effects must be obvious. State mutations must be traceable. Magic is the enemy of maintainability.' },
+  { title:'Fail Loudly, Recover Gracefully', content:'Errors that are swallowed are bugs that compound. Every error path must be deliberate. Recovery logic is first-class code, not defensive afterthought.' },
+  { title:'Observability is Architecture', content:'A system that cannot be measured cannot be improved. Structured logs, distributed traces, and business-level metrics must be considered at design time.' },
+  { title:'Data Outlives Code', content:'The schema and data model are more important than the service layer. Bad data models create technical debt that compounds exponentially with scale.' },
+  { title:'Boring Technology Wins', content:'Use the most boring, battle-tested solution available. Novelty has a cost. Every exotic technology choice is a maintenance liability. Excitement is not a valid architectural justification.' },
+  { title:'Delete More Than You Write', content:'The best code is no code. Every line is a liability. The goal is not cleverness — it is the minimum correct system that solves the actual problem.' },
+  { title:'Distributed Means Different', content:'Distributed systems are fundamentally different from local computation. Network partitions happen. Clocks drift. Partial failure is the norm. Design accordingly from the start.' }
+];
+
+const READING_LIST = [
+  { title:'Designing Data-Intensive Applications', author:'Martin Kleppmann', status:'core', notes:'The single most important systems book. Read it twice.' },
+  { title:'Systems Performance', author:'Brendan Gregg', status:'core', notes:'Essential for understanding what the OS is actually doing.' },
+  { title:'The Art of PostgreSQL', author:'Dimitri Fontaine', status:'core', notes:'Transforms SQL from query language to application architecture tool.' },
+  { title:'Programming Rust', author:'Blandy, Orendorff, Tindall', status:'core', notes:'Best language book written in the last decade. Ownership finally clicked.' },
+  { title:'Database Internals', author:'Alex Petrov', status:'advanced', notes:'Storage engines, consensus algorithms, distributed transactions.' },
+  { title:'Crafting Interpreters', author:'Robert Nystrom', status:'advanced', notes:'Available free online. Best practical PL engineering book.' },
+  { title:'Release It!', author:'Michael Nygard', status:'core', notes:'Circuit breakers, bulkheads, timeouts — all originated here.' },
+  { title:'The Practice of System and Network Administration', author:'Limoncelli et al.', status:'reference', notes:'Ops fundamentals that every developer should internalize.' },
+  { title:'Understanding Distributed Systems', author:'Roberto Vitillo', status:'core', notes:'Modern, concise treatment of distributed systems fundamentals.' },
+  { title:'Staff Engineer', author:'Will Larson', status:'career', notes:'Technical leadership mental models beyond pure engineering.' }
+];
+
+const GLOSSARY = {
+  'cache-coherence': 'Protocol ensuring all CPU caches see a consistent view of memory. Violations cause race conditions in shared-memory concurrent programs.',
+  'false-sharing': 'Performance degradation when unrelated data shares a CPU cache line. Two threads modifying adjacent variables on the same cache line cause unnecessary invalidation traffic.',
+  'thundering-herd': 'When many processes simultaneously wake up to handle an event but only one can. Mitigated via SO_REUSEPORT, accept4 serialization, or epoll_exclusive.',
+  'tail-latency': 'The latency of the slowest percentile of requests (p99, p999). Often 10-100× median latency due to GC pauses, lock contention, or resource exhaustion.',
+  'backpressure': 'Flow control mechanism that slows producers when consumers are overwhelmed. Essential for stable streaming pipelines.',
+  'write-amplification': 'Ratio of physical bytes written to logical bytes written. High WA destroys SSD endurance and degrades throughput. Key consideration in LSM-tree databases.',
+  'compaction': 'Background process in LSM-tree databases (RocksDB, LevelDB) that merges and rewrites SSTables to reclaim space and improve read performance.',
+  'WAL': 'Write-Ahead Log. Changes are written to a durable sequential log before being applied to the main data structure. Enables crash recovery and replication.',
+  'MVCC': 'Multi-Version Concurrency Control. Readers never block writers by maintaining multiple versions of data. Used by PostgreSQL, CockroachDB, and most modern databases.',
+  'CAS': 'Compare-And-Swap. Atomic CPU instruction: only update a memory location if it currently holds an expected value. Foundation of all lock-free data structures.'
+};
+
+console.log('%c VOXELFOX RUNTIME v2.6 ', 'background:#00ffe0;color:#02020a;font-family:monospace;font-size:14px;font-weight:bold;padding:4px 12px;');
+console.log('%c All systems nominal. ', 'color:#00ffe0;font-family:monospace;');
+console.log('%c Loaded ' + RUNTIME_PROFILES.length + ' benchmark profiles, ' + ARCH_PATTERNS.length + ' architecture patterns, ' + READING_LIST.length + ' reading list entries. ', 'color:#7b2fff;font-family:monospace;');
+</script>
+
+<style>
+/* ─── ADDITIONAL MICRO-INTERACTIONS ─── */
+.gcard:hover { transform: translateY(-1px); }
+
+/* shimmer on stat cards */
+.home-stat-card::before {
+  content:''; position:absolute; top:-1px; left:-1px; right:-1px;
+  height:1px;
+  background: linear-gradient(90deg, transparent, var(--c1), transparent);
+  opacity:0; transition:opacity .4s;
+}
+.home-stat-card:hover::before { opacity:.7; }
+
+/* focused input glow */
+.ct-field input:focus,
+.ct-field textarea:focus,
+.ct-field select:focus {
+  box-shadow: 0 0 0 1px rgba(0,255,224,.2), 0 0 12px rgba(0,255,224,.08);
+}
+
+/* experiment item expand */
+.ex-item .ex-desc { transition: color .3s; }
+.ex-item:hover .ex-desc { color:rgba(200,204,232,.6); }
+.ex-item:hover .ex-name { color:var(--c1); }
+
+/* project card parallax number */
+.pj-num { transition: transform .4s cubic-bezier(.16,1,.3,1), color .3s; }
+.pj-card:hover .pj-num { transform: translate(4px,-4px) scale(1.08); }
+
+/* timeline hover */
+.tl-entry { transition: background .25s; padding-left:0; }
+.tl-entry:hover { background:rgba(0,255,224,.018); padding-left:8px; }
+
+/* button ripple on active */
+.btn-mag:active { transform: scale(.97); }
+.btn-out:active { transform: scale(.97); }
+
+/* side nav line connector */
+.side-nav::before {
+  content:''; position:absolute; top:10px; bottom:10px; right:12px;
+  width:1px; background:var(--border); pointer-events:none;
+}
+
+/* about attr hover */
+.about-attr { transition: background .2s; border-radius:0; padding-left:4px; padding-right:4px; }
+.about-attr:hover { background:rgba(0,255,224,.03); }
+
+/* skill fill sparkle animate on entry */
+@keyframes skillIn {
+  from { width:0 !important; }
+}
+.pg.act .sk-fill { animation: skillIn 0s; }
+
+/* terminal cursor blink */
+.term-cursor { box-shadow: 0 0 6px var(--c1); }
+
+/* contact channel icon pulse */
+.ct-ch-ico { transition: transform .25s, filter .25s; }
+.ct-ch:hover .ct-ch-ico { transform: scale(1.2); filter:drop-shadow(0 0 8px var(--c1)); }
+
+/* footer link underline fill */
+.ft-lnk { position:relative; }
+.ft-lnk::after {
+  content:''; position:absolute; bottom:0; left:0; right:0; height:1px;
+  background:var(--c1); transform:scaleX(0); transform-origin:left;
+  transition:transform .3s cubic-bezier(.16,1,.3,1);
+}
+.ft-lnk:hover::after { transform:scaleX(1); }
+
+/* chip hover */
+.chip { transition: border-color .2s, background .2s, box-shadow .2s; cursor:default; }
+.chip:hover { border-color:rgba(0,255,224,.35); box-shadow:0 0 8px rgba(0,255,224,.1); }
+
+/* pj-featured hover glow */
+.pj-featured:hover { box-shadow: inset 0 0 40px rgba(0,255,224,.03); }
+
+/* responsive scroll for pages */
+.pg { scrollbar-width:thin; scrollbar-color:rgba(0,255,224,.2) transparent; }
+
+/* number counter animation */
+@keyframes countUp {
+  from { opacity:0; transform: translateY(8px); }
+  to   { opacity:1; transform: translateY(0); }
+}
+.hsc-num { animation: countUp .6s cubic-bezier(.16,1,.3,1) both; }
+.home-stat-card:nth-child(1) .hsc-num { animation-delay:.1s; }
+.home-stat-card:nth-child(2) .hsc-num { animation-delay:.2s; }
+.home-stat-card:nth-child(3) .hsc-num { animation-delay:.3s; }
+.home-stat-card:nth-child(4) .hsc-num { animation-delay:.4s; }
+
+/* title stagger in */
+@keyframes titleIn {
+  from { opacity:0; transform:translateY(24px) skewY(2deg); }
+  to   { opacity:1; transform:translateY(0) skewY(0); }
+}
+.pg.act .home-title { animation: titleIn .8s cubic-bezier(.16,1,.3,1) both; }
+.pg.act .about-big-title { animation: titleIn .7s cubic-bezier(.16,1,.3,1) both; }
+.pg.act .pj-big { animation: titleIn .7s cubic-bezier(.16,1,.3,1) both; }
+.pg.act .ex-big { animation: titleIn .7s cubic-bezier(.16,1,.3,1) both; }
+.pg.act .ct-big { animation: titleIn .7s cubic-bezier(.16,1,.3,1) both; }
+
+/* card stagger */
+@keyframes cardIn {
+  from { opacity:0; transform:translateY(20px); }
+  to   { opacity:1; transform:translateY(0); }
+}
+.pg.act .gcard { animation: cardIn .6s cubic-bezier(.16,1,.3,1) both; }
+.pg.act .gcard:nth-child(1) { animation-delay:.05s; }
+.pg.act .gcard:nth-child(2) { animation-delay:.1s; }
+.pg.act .gcard:nth-child(3) { animation-delay:.15s; }
+.pg.act .gcard:nth-child(4) { animation-delay:.2s; }
+.pg.act .ex-item { animation: cardIn .5s cubic-bezier(.16,1,.3,1) both; }
+.pg.act .ex-item:nth-child(1) { animation-delay:.05s; }
+.pg.act .ex-item:nth-child(2) { animation-delay:.1s; }
+.pg.act .ex-item:nth-child(3) { animation-delay:.15s; }
+.pg.act .ex-item:nth-child(4) { animation-delay:.2s; }
+.pg.act .ex-item:nth-child(5) { animation-delay:.25s; }
+.pg.act .ex-item:nth-child(6) { animation-delay:.3s; }
+.pg.act .tl-entry { animation: cardIn .5s cubic-bezier(.16,1,.3,1) both; }
+.pg.act .tl-entry:nth-child(1) { animation-delay:.1s; }
+.pg.act .tl-entry:nth-child(2) { animation-delay:.18s; }
+.pg.act .tl-entry:nth-child(3) { animation-delay:.26s; }
+
+/* process strip stagger */
+.pg.act .pj-grid .gcard { animation-delay:.05s; }
+
+/* CTA button entrance */
+@keyframes ctaIn {
+  from { opacity:0; transform:translateX(-12px); }
+  to   { opacity:1; transform:translateX(0); }
+}
+.pg.act .btn-mag { animation: ctaIn .7s cubic-bezier(.16,1,.3,1) .3s both; }
+.pg.act .btn-out { animation: ctaIn .7s cubic-bezier(.16,1,.3,1) .45s both; }
+
+/* Scan flicker on loader text */
+@keyframes scanFlicker {
+  0%,100% { opacity:.3; }
+  2%  { opacity:.8; }
+  4%  { opacity:.25; }
+  6%  { opacity:.85; }
+  96% { opacity:.3; }
+  98% { opacity:.6; }
+}
+.ldr-ascii { animation: scanFlicker 2s ease-in-out infinite; }
+
+/* Grid line flicker */
+@keyframes gridFlicker {
+  0%,100% { opacity:1; }
+  85% { opacity:1; }
+  86% { opacity:.4; }
+  87% { opacity:1; }
+  90% { opacity:1; }
+  91% { opacity:.6; }
+  92% { opacity:1; }
+}
+#c-mid { animation: gridFlicker 8s ease-in-out infinite; }
+
+/* RGB split on nav logo hover */
+.n-logo:hover {
+  animation: rgbSplit .15s steps(1) 3;
+}
+@keyframes rgbSplit {
+  0%   { text-shadow: -2px 0 var(--c3), 2px 0 var(--c2); }
+  33%  { text-shadow: 2px 0 var(--c3), -2px 0 var(--c2); }
+  66%  { text-shadow: -1px 0 var(--c2), 1px 0 var(--c3); }
+  100% { text-shadow: none; }
+}
+
+/* Matrix rain overlay hint in bg corners */
+.corner-tl {
+  position:fixed; top:70px; left:50px; z-index:2; pointer-events:none;
+  font-family:var(--fm); font-size:8px; color:rgba(0,255,224,.06);
+  line-height:1.6; letter-spacing:.08em;
+  animation: matrixFade 4s ease-in-out infinite;
+}
+.corner-br {
+  position:fixed; bottom:58px; right:50px; z-index:2; pointer-events:none;
+  font-family:var(--fm); font-size:8px; color:rgba(123,47,255,.06);
+  line-height:1.6; letter-spacing:.08em; text-align:right;
+  animation: matrixFade 4s ease-in-out infinite reverse;
+}
+@keyframes matrixFade {
+  0%,100% { opacity:0; }
+  30%,70% { opacity:1; }
+}
+</style>
+
+<div class="corner-tl">
+01001000 01100101 01101100<br>
+01101100 01101111 00100000<br>
+01010110 01101111 01111000<br>
+01100101 01101100 01000110<br>
+01101111 01111000 00100001
+</div>
+<div class="corner-br">
+0xDEADBEEF<br>
+0xCAFEBABE<br>
+0xC0FFEE<br>
+0xFEEDFACE<br>
+0xBAADF00D
+</div>
+
+</body>
+</html>
